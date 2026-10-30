@@ -1,0 +1,125 @@
+import com.kauailabs.navx.frc.AHRS;
+import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.wpilibj.SPI;
+import edu.wpi.first.wpilibj.drive.DifferentialDrive;
+import edu.wpi.first.wpilibj2.command.CommandBase;
+
+/**
+ * Turns the robot 45 degrees to the LEFT using ONLY NAVX2 yaw.
+ * Uses a PID controller on the heading for smooth and accurate turning.
+ */
+public class TurnDegrees extends CommandBase {
+
+    private final DifferentialDrive m_drivetrain;
+    private final AHRS m_navx;
+    private final PIDController m_turnPID;
+
+    private final double TARGET_ANGLE;  // Negative = left (counter-clockwise)
+
+    // Tunable values - adjust for your robot
+    private static final double TURN_SPEED = 0.55;     // Base turning power (0.0 - 1.0)
+    private static final double kP = 0.022;
+    private static final double kI = 0.0;
+    private static final double kD = 0.003;
+
+    /**
+     * @param drivetrain Your robot's DifferentialDrive (tank drive)
+     */
+    public TurnDegrees(DifferentialDrive drivetrain double degrees) {
+        m_driverain = drivetrain;
+        TARGET_ANGLE = degrees;
+
+        // Initialize NAVX2 on MXP port (most common setup)
+      try{
+        m_navx = new AHRS(SPI.Port.kUSB1);
+      //ahrs = new AHRS(SPI.Port.kMXP);
+      //ahrs = new AHRS(SerialPort.Port.kUSB1);
+      m_navx.enableLogging(true);
+    } catch (RuntimeException ex) {
+      DriverStation.reportError("Error instantiating navX MXP:  " + ex.getMessage(), true);
+    }
+        m_turnPID = new PIDController(kP, kI, kD);
+        m_turnPID.setTolerance(1.5);                    // Degrees tolerance
+        m_turnPID.enableContinuousInput(-180.0, 180.0); // Handle yaw wrapping properly
+
+        // This command needs the drivetrain
+        // addRequirements(drivetrainSubsystem);  // Uncomment if using Subsystem
+    }
+
+    @Override
+    public void initialize() {
+        m_navx.zeroYaw();                    // Set current heading as 0°
+        m_turnPID.setSetpoint(TARGET_ANGLE); // Target = -45° (left)
+        m_turnPID.reset();
+
+        m_drivetrain.stopMotor();
+    }
+
+    @Override
+    public void execute() {
+        double currentYaw = m_navx.getYaw();
+
+        // Calculate required turn power using PID
+        double turnPower = m_turnPID.calculate(currentYaw);
+
+        // Limit the turn power to a safe maximum
+        turnPower = Math.max(-TURN_SPEED, Math.min(TURN_SPEED, turnPower));
+
+        // For a pure turn-in-place (tank drive):
+        // Left side goes backward, right side goes forward for left turn
+        m_drivetrain.tankDrive(-turnPower, turnPower);
+    }
+
+    @Override
+    public boolean isFinished() {
+        // Finish when NAVX2 reports we are within tolerance of target angle
+        return m_turnPID.atSetpoint();
+    }
+
+    @Override
+    public void end(boolean interrupted) {
+        m_drivetrain.stopMotor();   // Always stop motors when command ends
+        m_turnPID.close();
+    }
+}    
+
+    @Override
+    public void execute() {
+        // Get current heading from NAVX2 only
+        double currentYaw = m_navx.getYaw();
+
+        // Calculate rotation correction (turn power) from PID
+
+
+
+        double turnPower = m_headingPID.calculate(currentYaw);
+
+        // Simple tank drive with heading correction:
+        // Both sides get the same forward speed, plus/minus turn correction
+        double leftSpeed = FORWARD_SPEED - turnPower;
+        double rightSpeed = FORWARD_SPEED + turnPower;
+
+        // Clamp speeds to valid range
+        leftSpeed = Math.max(-1.0, Math.min(1.0, leftSpeed));
+        rightSpeed = Math.max(-1.0, Math.min(1.0, rightSpeed));
+
+        m_drivetrain.tankDrive(leftSpeed, rightSpeed);
+    }
+
+    @Override
+    public boolean isFinished() {
+        // Distance from NAVX2 only (magnitude of displacement vector in horizontal plane)
+        double dispX = m_navx.getDisplacementX();
+        double dispY = m_navx.getDisplacementY();
+        double distanceTraveled = Math.sqrt(dispX * dispX + dispY * dispY);
+
+
+        return distanceTraveled >= m_targetDistanceMeters;
+    }
+
+    @Override
+    public void end(boolean interrupted) {
+        m_drivetrain.stopMotor(); // Always stop the motors when done
+        m_headingPID.close();
+    }
+}
